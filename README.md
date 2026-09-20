@@ -28,8 +28,22 @@ docker compose down
 - 病历书写与模板：门诊/住院病历结构化字段，集成富文本编辑器，按患者时间轴展示。
 - 医嘱与处方管理：处方药品、规格、用法、频次、疗程和状态跟踪，支持打印预览入口。
 - 病历权限与审签：内置医生、护士、管理员角色示例，演示 JWT 登录和审签归档状态。
+- 归档修订闭环：已归档病历禁止直接改动；医生提交修订申请（原因 + 新主诉/诊断/治疗方案），同一病历同一医生仅允许一条待处理申请；管理员批准时在同一事务内生成新版本并留档旧版，驳回则保留原文并记录审批意见；重复申请与并发审批只会成功一次，失败不产生半更新；时间轴可回读全部版本与审批结果。
 - 病历检索与统计：提供患者、病历、处方数量和科室工作量统计接口。
 - 系统管理与基础数据：数据库初始化审计日志表，保留操作追踪能力。
+
+## 归档修订闭环说明
+
+| 步骤 | 接口 | 说明 |
+| --- | --- | --- |
+| 直接修改 | `PUT /api/records/:id` | 仅医生/管理员；已归档病历返回 403，未归档病历修改即留档 |
+| 提交申请 | `POST /api/records/:id/revision-requests` | 仅医生/管理员；部分唯一索引保证一病历一医生一条待处理 |
+| 待审批列表 | `GET /api/revision-requests/pending` | 仅管理员 |
+| 批准 | `POST /api/revision-requests/:id/approve` | 仅管理员；条件更新抢占 + 事务内旧版留档、新版本生效 |
+| 驳回 | `POST /api/revision-requests/:id/reject` | 仅管理员；必须填写审批意见，原病历不变 |
+| 版本回读 | `GET /api/patients/:id/timeline`、`GET /api/records/:id/versions` | 时间轴返回每份病历的版本留档与审批记录 |
+
+演示账号：`doctor/doctor123`（医生）、`nurse/nurse123`（护士）、`admin/admin123`（管理员）。前端右上角切换角色即自动登录对应账号。
 
 ## 本地开发方式
 
@@ -66,13 +80,14 @@ npm run dev
 .
 ├── backend/              # NestJS 后端
 │   ├── src/auth/         # 登录与 JWT
-│   ├── src/common/       # 常量、数据库、审计日志
-│   └── src/records/      # 患者档案与病历 API
+│   ├── src/common/       # 常量、数据库（含事务助手）、审计日志、角色守卫
+│   ├── src/records/      # 患者档案、病历直改拦截与版本时间轴 API
+│   └── src/revisions/    # 归档修订申请、事务化审批闭环
 ├── database/
-│   └── init.sql          # PostgreSQL 初始化脚本
+│   └── init.sql          # PostgreSQL 初始化脚本（含版本留档与修订申请表）
 ├── frontend/             # React 前端
-│   ├── src/api/          # API 请求
-│   ├── src/components/   # 通用组件
+│   ├── src/api/          # API 请求（含 JWT 拦截器）
+│   ├── src/components/   # 通用组件、修订申请弹窗、审批面板
 │   ├── src/constants/    # 前端常量
 │   ├── src/pages/        # 页面
 │   └── src/types/        # 类型定义
