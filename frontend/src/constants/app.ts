@@ -7,3 +7,9 @@ export const ROLE_OPTIONS = [
   { label: '护士', value: 'nurse' },
   { label: '管理员', value: 'admin' },
 ];
+
+export const REVISION_STATUS_LABEL: Record<string, { text: string; color: string }> = {
+  待审批: { text: '待审批', color: 'gold' },
+  已批准: { text: '已批准 · 已生成新版本', color: 'green' },
+  已驳回: { text: '已驳回 · 保留原文', color: 'red' },
+};

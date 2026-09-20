@@ -12,6 +12,9 @@ export interface Patient {
 
 export interface MedicalRecord {
   id: number;
+  patientId: number;
+  rootId: number;
+  version: number;
   department: string;
   doctor: string;
   recordType: string;
@@ -19,7 +22,39 @@ export interface MedicalRecord {
   diagnosis: string;
   treatment: string;
   status: string;
+  isCurrent: boolean;
   createdAt: string;
+}
+
+export interface RevisionRequest {
+  id: number;
+  recordId: number;
+  patientId?: number;
+  version?: number;
+  doctor: string;
+  reason: string;
+  chiefComplaint: string;
+  diagnosis: string;
+  treatment: string;
+  status: string;
+  reviewer: string | null;
+  reviewComment: string | null;
+  createdAt: string;
+  reviewedAt: string | null;
+}
+
+export interface PatientTimeline {
+  patient: { id: number; name: string };
+  versions: MedicalRecord[];
+  revisions: RevisionRequest[];
+}
+
+export interface RevisionFormValues {
+  doctor?: string;
+  reason: string;
+  chiefComplaint: string;
+  diagnosis: string;
+  treatment: string;
 }
 
 export interface Summary {

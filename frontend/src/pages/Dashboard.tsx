@@ -1,32 +1,47 @@
 import { FileDoneOutlined, MedicineBoxOutlined, TeamOutlined } from '@ant-design/icons';
-import { Alert, Button, Card, Col, Form, Input, Layout, List, Row, Select, Space, Table, Tag, Timeline, Typography } from 'antd';
-import { useEffect, useState } from 'react';
+import { Alert, Button, Card, Col, Form, Input, Layout, List, Row, Select, Space, Table, Tag, Typography } from 'antd';
 import { Editor, Toolbar } from '@wangeditor/editor-for-react';
 import '@wangeditor/editor/dist/css/style.css';
+import { useEffect, useState } from 'react';
 import { fetchSummary, fetchTimeline, searchPatients } from '../api/emr';
 import { APP_NAME, PRESCRIPTION_STATUS, ROLE_OPTIONS } from '../constants/app';
 import { MetricCard } from '../components/MetricCard';
-import type { MedicalRecord, Patient, Summary } from '../types/emr';
+import { RevisionCenter } from '../components/RevisionCenter';
+import { AdminRevisionQueue } from '../components/AdminRevisionQueue';
+import type { Patient, PatientTimeline, Summary } from '../types/emr';
 
 const { Header, Content } = Layout;
 
 export function Dashboard() {
   const [summary, setSummary] = useState<Summary>({ patientCount: 0, recordCount: 0, prescriptionCount: 0, workload: [] });
   const [patients, setPatients] = useState<Patient[]>([]);
-  const [timeline, setTimeline] = useState<MedicalRecord[]>([]);
+  const [timeline, setTimeline] = useState<PatientTimeline | null>(null);
+  const [selectedPatient, setSelectedPatient] = useState<number | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [editorHtml, setEditorHtml] = useState('<p>主诉：发热伴咳嗽。诊疗计划：完善血常规检查。</p>');
 
-  const load = async () => {
-    const [summaryData, patientData] = await Promise.all([fetchSummary(), searchPatients('')]);
-    setSummary(summaryData);
-    setPatients(patientData);
-    if (patientData[0]) {
-      setTimeline(await fetchTimeline(patientData[0].id));
+  const loadTimeline = async (patientId: number) => {
+    setSelectedPatient(patientId);
+    setTimeline(await fetchTimeline(patientId));
+  };
+
+  const refreshTimeline = async () => {
+    if (selectedPatient !== null) {
+      setTimeline(await fetchTimeline(selectedPatient));
     }
+    setReloadKey((key) => key + 1);
   };
 
   useEffect(() => {
-    void load();
+    const init = async () => {
+      const [summaryData, patientData] = await Promise.all([fetchSummary(), searchPatients('')]);
+      setSummary(summaryData);
+      setPatients(patientData);
+      if (patientData[0]) {
+        await loadTimeline(patientData[0].id);
+      }
+    };
+    void init();
   }, []);
 
   return (
@@ -42,25 +57,27 @@ export function Dashboard() {
         <Alert
           type="info"
           showIcon
-          message="演示数据已包含患者档案、结构化病历、审签状态与审计日志，前端通过 /api 由 Nginx 反向代理到后端。"
+          message="已归档病历禁止直接改动：医生提交修订申请（原因 + 新主诉/诊断/治疗），管理员批准后同一事务生成新版本并将旧版留档，驳回则保留原文并填写意见；时间轴可回读各版本与审批结果。"
         />
         <Row gutter={[16, 16]}>
           <Col xs={24} md={8}><MetricCard title="患者档案" value={summary.patientCount} icon={<TeamOutlined />} /></Col>
-          <Col xs={24} md={8}><MetricCard title="病历数量" value={summary.recordCount} icon={<FileDoneOutlined />} /></Col>
+          <Col xs={24} md={8}><MetricCard title="在架病历" value={summary.recordCount} icon={<FileDoneOutlined />} /></Col>
           <Col xs={24} md={8}><MetricCard title="处方数量" value={summary.prescriptionCount} icon={<MedicineBoxOutlined />} /></Col>
         </Row>
 
         <Row gutter={[16, 16]}>
-          <Col xs={24} lg={14}>
+          <Col xs={24} lg={9}>
             <Card title="患者档案快速检索">
               <Form layout="inline" onFinish={(values) => searchPatients(values.keyword ?? '').then(setPatients)}>
                 <Form.Item name="keyword"><Input.Search placeholder="姓名 / 身份证号 / 手机号" enterButton="检索" /></Form.Item>
               </Form>
               <Table
                 rowKey="id"
+                size="small"
                 dataSource={patients}
                 pagination={false}
-                onRow={(record) => ({ onClick: () => fetchTimeline(record.id).then(setTimeline) })}
+                onRow={(record) => ({ onClick: () => loadTimeline(record.id) })}
+                rowClassName={(record) => (record.id === selectedPatient ? 'ant-table-row-selected' : '')}
                 columns={[
                   { title: '档案编号', dataIndex: 'recordNo' },
                   { title: '姓名', dataIndex: 'name' },
@@ -71,21 +88,14 @@ export function Dashboard() {
               />
             </Card>
           </Col>
-          <Col xs={24} lg={10}>
-            <Card title="病历时间轴与审签">
-              <Timeline
-                items={timeline.map((record) => ({
-                  color: record.status === '已归档' ? 'green' : 'blue',
-                  children: (
-                    <Space direction="vertical">
-                      <strong>{record.department} · {record.recordType}</strong>
-                      <span>{record.chiefComplaint}</span>
-                      <Tag>{record.status}</Tag>
-                    </Space>
-                  ),
-                }))}
-              />
-            </Card>
+          <Col xs={24} lg={15}>
+            <RevisionCenter timeline={timeline} onChanged={refreshTimeline} />
+          </Col>
+        </Row>
+
+        <Row gutter={[16, 16]}>
+          <Col span={24}>
+            <AdminRevisionQueue reloadKey={reloadKey} onProcessed={refreshTimeline} />
           </Col>
         </Row>
 
